@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import uuid
 import zipfile
 from pathlib import Path
 from threading import Lock
 
+import numpy as np
 import pandas as pd
+from scipy.optimize import linear_sum_assignment
+from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -20,7 +24,7 @@ ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "static"
 MAX_UPLOAD_BYTES = 30 * 1024 * 1024
 
-app = FastAPI(title="SLR Lens", version="2.1.0")
+app = FastAPI(title="SLR Lens", version="2.2.0")
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 datasets: dict[str, pd.DataFrame] = {}
@@ -51,6 +55,18 @@ def _read_upload(filename: str, content: bytes) -> pd.DataFrame:
     raise ValueError("Formato non supportato. Usa CSV o XLSX esportato da Scopus.")
 
 
+def _comparison_key(value: object) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
+
+
+def _doi_key(value: object) -> str:
+    return re.sub(
+        r"^https?://(dx\.)?doi\.org/",
+        "",
+        str(value or "").strip().lower(),
+    )
+
+
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(STATIC / "index.html")
@@ -60,9 +76,9 @@ def index() -> FileResponse:
 def health() -> dict:
     return {
         "status": "ok",
-        "version": "2.1.0",
+        "version": "2.2.0",
         "algorithms": ["LDA", "LSI"],
-        "validation": "multi-metric, multi-seed, real LDA-vs-LSI comparison",
+        "validation": "multi-metric, multi-seed, explorable LDA candidates and real LDA-vs-LSI comparison",
         "lsi": True,
     }
 
@@ -183,14 +199,121 @@ def export_methodology(analysis_id: str) -> Response:
         "corpus_sha256": result["corpus_sha256"],
         "methodology": result["methodology"],
         "candidates": result["candidates"],
+        "lda_models": result["lda_models"],
         "lsi": result.get("lsi"),
         "algorithm_comparison": result.get("algorithm_comparison"),
+        "external_validation": result.get("external_validation"),
     }, indent=2, ensure_ascii=False)
     return Response(
         content,
         media_type="application/json",
         headers={"Content-Disposition": f'attachment; filename="slr-lens-methodology-{analysis_id[:8]}.json"'},
     )
+
+
+@app.post("/api/results/{analysis_id}/compare-myslr")
+async def compare_myslr_export(
+    analysis_id: str,
+    file: UploadFile = File(...),
+) -> JSONResponse:
+    with store_lock:
+        result = results.get(analysis_id)
+    if result is None:
+        raise HTTPException(404, "Analisi non trovata.")
+    content = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, "Il file supera il limite di 30 MB.")
+    try:
+        reference = _read_upload(file.filename or "myslr-export.xlsx", content)
+    except Exception as exc:
+        raise HTTPException(400, str(exc)) from exc
+    columns = {
+        _comparison_key(column): column for column in reference.columns
+    }
+    topic_column = columns.get("topic")
+    doi_column = columns.get("doi")
+    title_column = columns.get("title")
+    if topic_column is None or (doi_column is None and title_column is None):
+        raise HTTPException(
+            400,
+            "L'export deve contenere topic e almeno una colonna DOI o title.",
+        )
+    reference = reference[reference[topic_column].notna()].copy()
+    labels = sorted(
+        {str(value) for value in reference[topic_column]},
+        key=lambda value: (not value.isdigit(), int(value) if value.isdigit() else value),
+    )
+    label_index = {label: index for index, label in enumerate(labels)}
+    by_doi = {}
+    by_title = {}
+    for row in reference.to_dict("records"):
+        topic = label_index[str(row[topic_column])]
+        if doi_column and _doi_key(row.get(doi_column)):
+            by_doi[_doi_key(row.get(doi_column))] = topic
+        if title_column and _comparison_key(row.get(title_column)):
+            by_title[_comparison_key(row.get(title_column))] = topic
+
+    documents = {document["id"]: document for document in result["documents"]}
+    comparisons = []
+    for model in result["lda_models"]:
+        reference_topics = []
+        slr_topics = []
+        doi_matches = 0
+        title_matches = 0
+        for assignment in model["document_assignments"]:
+            document = documents[assignment["id"]]
+            topic = by_doi.get(_doi_key(document.get("doi")))
+            if topic is not None:
+                doi_matches += 1
+            else:
+                topic = by_title.get(_comparison_key(document.get("title")))
+                if topic is not None:
+                    title_matches += 1
+            if topic is not None:
+                reference_topics.append(topic)
+                slr_topics.append(int(assignment["topic"]) - 1)
+        rows_count = len(labels)
+        columns_count = model["topics_count"]
+        contingency = np.zeros((rows_count, columns_count), dtype=int)
+        for reference_topic, slr_topic in zip(reference_topics, slr_topics):
+            contingency[reference_topic, slr_topic] += 1
+        row_indices, column_indices = linear_sum_assignment(-contingency)
+        aligned = int(contingency[row_indices, column_indices].sum())
+        matched = len(reference_topics)
+        comparisons.append({
+            "topics": model["topics_count"],
+            "same_topic_count": model["topics_count"] == len(labels),
+            "matched_documents": matched,
+            "coverage": matched / max(len(result["documents"]), 1),
+            "doi_matches": doi_matches,
+            "title_matches": title_matches,
+            "adjusted_rand_index": float(
+                adjusted_rand_score(reference_topics, slr_topics)
+            ) if matched else None,
+            "normalized_mutual_information": float(
+                normalized_mutual_info_score(reference_topics, slr_topics)
+            ) if matched else None,
+            "aligned_accuracy": aligned / max(matched, 1),
+            "contingency_matrix": contingency.tolist(),
+            "best_mapping": [{
+                "myslr_topic": labels[int(row)] ,
+                "slr_lens_topic": int(column) + 1,
+                "documents": int(contingency[row, column]),
+            } for row, column in zip(row_indices, column_indices)],
+        })
+    payload = {
+        "source_file": file.filename,
+        "reference_topics": labels,
+        "reference_documents": int(len(reference)),
+        "comparisons": comparisons,
+        "interpretation": (
+            "ARI and NMI are label-invariant. Values near 1 indicate strong agreement; "
+            "values near 0 indicate little agreement. Agreement is not ground-truth accuracy."
+        ),
+    }
+    with store_lock:
+        result["external_validation"] = payload
+    return JSONResponse(payload)
 
 
 @app.get("/api/results/{analysis_id}/bundle")
@@ -248,7 +371,7 @@ def export_reproducibility_bundle(analysis_id: str) -> Response:
             "corpus_sha256",
             "log_likelihood_per_word", "coherence_umass", "coherence_npmi",
             "topic_diversity", "topic_exclusivity", "stability",
-            "duration_seconds", "candidates", "quality", "bibliometrics",
+            "duration_seconds", "candidates", "lda_models", "quality", "bibliometrics",
             "methodology", "lsi", "algorithm_comparison",
         )
     }
@@ -256,6 +379,7 @@ def export_reproducibility_bundle(analysis_id: str) -> Response:
         key: value for key, value in diagnostics["quality"].items()
         if key not in {"uncertain", "outliers"}
     }
+    diagnostics["external_validation"] = result.get("external_validation")
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("document_assignments.csv", pd.DataFrame(document_rows).to_csv(index=False))

@@ -48,6 +48,21 @@ def test_lda_analysis_has_traceable_outputs():
     assert len(result["documents"]) == 18
     assert sum(topic["document_count"] for topic in result["topics"]) == 18
     assert len(result["candidates"]) == 3
+    assert len(result["lda_models"]) == 3
+    assert [model["topics_count"] for model in result["lda_models"]] == [2, 3, 4]
+    assert sum(model["recommended"] for model in result["lda_models"]) == 1
+    for model in result["lda_models"]:
+        assert len(model["topics"]) == model["topics_count"]
+        assert len(model["topic_coordinates"]) == model["topics_count"]
+        assert len(model["document_assignments"]) == 18
+        assert sum(topic["document_count"] for topic in model["topics"]) == 18
+        assert all("topic_frequency" in word for topic in model["topics"] for word in topic["words"])
+        assert all("prevalence" in point for point in model["topic_coordinates"])
+        assert all(
+            "zzfieldboundaryzz" not in word["token"]
+            for topic in model["topics"]
+            for word in topic["words"]
+        )
     assert result["duration_seconds"] > 0
     assert result["selection_mode"] == "screening"
     assert "coherence_npmi" in result
@@ -65,6 +80,9 @@ def test_scientific_cleaning_removes_publishers_and_normalizes_concepts():
     assert "software_development" in text
     assert "copyright" not in text
     assert "springer" not in text
+    assert clean_scientific_text(
+        "software development lifecycle (SDLC)"
+    ) == "software_development_lifecycle"
 
 
 def test_single_k_is_not_reported_as_optimized():

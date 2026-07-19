@@ -142,9 +142,22 @@
           </div>
         </div>
         <div id="result-kpis" class="stats-grid result-kpis"></div>
+        <div class="model-switcher">
+          <div>
+            <small>MODELLO LDA ATTIVO</small>
+            <strong id="active-model-description">Configurazione raccomandata</strong>
+            <p>La raccomandazione resta visibile, ma puoi ispezionare ogni K già calcolato senza ripetere l'analisi.</p>
+          </div>
+          <label>Numero di topic
+            <select id="lda-model-select"></select>
+          </label>
+          <button class="secondary-button model-jump" data-open-tab="lda-explorer">Interactive LDA Explorer</button>
+          <button class="secondary-button model-jump" data-open-tab="map">t-SNE visualization</button>
+        </div>
         <div class="result-tabs" role="tablist">
           <button class="active" data-tab="overview">Panoramica</button>
           <button data-tab="topics">Topic & documenti</button>
+          <button data-tab="lda-explorer">LDA Explorer</button>
           <button data-tab="map">Mappa documenti</button>
           <button data-tab="authors">Autori</button>
           <button data-tab="quality">Qualità & incertezza</button>
@@ -185,9 +198,38 @@
           </div>
         </div>
 
+        <div id="tab-lda-explorer" class="tab-panel">
+          <div class="lda-explorer-toolbar">
+            <div>
+              <small>RILEVANZA DEI TERMINI</small>
+              <strong>λ = <span id="lambda-value">0,60</span></strong>
+              <p>λ=1 privilegia probabilità nel topic; λ=0 privilegia termini esclusivi.</p>
+            </div>
+            <input id="lambda-slider" type="range" min="0" max="1" value="0.6" step="0.05" aria-label="Parametro lambda di rilevanza">
+          </div>
+          <div class="lda-vis-grid">
+            <article class="chart-card intertopic-card">
+              <div class="card-head"><div><small>JENSEN-SHANNON + MDS</small><h3>Distanza inter-topic</h3></div><span>dimensione = prevalenza</span></div>
+              <svg id="intertopic-map" viewBox="0 0 620 480" aria-label="Mappa delle distanze tra topic"></svg>
+            </article>
+            <article class="chart-card relevant-terms-card">
+              <div class="card-head"><div><small>TERM RELEVANCE</small><h3 id="relevant-terms-title">Termini più rilevanti</h3></div><span>topic vs corpus</span></div>
+              <div id="relevant-terms-chart"></div>
+            </article>
+          </div>
+        </div>
+
         <div id="tab-map" class="tab-panel">
           <article class="chart-card map-card">
-            <div class="card-head"><div><small>DOCUMENT SIMILARITY</small><h3>Mappa semantica del corpus</h3></div><span id="projection-label">t-SNE su TF-IDF</span></div>
+            <div class="card-head map-head"><div><small>DOCUMENT SIMILARITY</small><h3>t-SNE visualization</h3></div>
+              <div class="map-controls">
+                <label>Fino all'anno <strong id="map-year-value">tutti</strong>
+                  <input id="map-year-filter" type="range" min="0" max="0" value="0">
+                </label>
+                <span id="projection-label">t-SNE su TF-IDF</span>
+              </div>
+            </div>
+            <div id="map-legend" class="map-legend"></div>
             <canvas id="document-map"></canvas>
             <div id="map-tooltip" class="map-tooltip hidden"></div>
           </article>
@@ -201,6 +243,18 @@
         </div>
 
         <div id="tab-quality" class="tab-panel">
+          <article class="validation-card">
+            <div>
+              <small>VALIDAZIONE ESTERNA</small>
+              <h3>Confronta con un export MySLR</h3>
+              <p>Abbina DOI e titoli, poi calcola ARI, NMI, copertura e matrice di corrispondenza per ogni K. L’accordo non viene interpretato come verità assoluta.</p>
+            </div>
+            <label class="secondary-button comparison-upload">
+              Importa dataset per topic
+              <input id="myslr-comparison-file" type="file" accept=".csv,.xlsx,.xls">
+            </label>
+          </article>
+          <div id="external-validation" class="external-validation hidden"></div>
           <div id="quality-stats" class="stats-grid"></div>
           <div class="dashboard-grid quality-grid">
             <article class="chart-card">

@@ -9,13 +9,17 @@ Applicazione web locale per analizzare export Scopus e dataset MySLR con **Laten
 - selezione manuale dei paper;
 - normalizzazione di concetti scientifici e rimozione del boilerplate editoriale;
 - confronto parallelo di più numeri di topic e repliche indipendenti;
+- scelta successiva di qualsiasi K già calcolato, senza nuovo addestramento;
 - selezione multi-metrica: UMass, NPMI, stabilità, diversità, esclusività e perplexity;
 - curva comparativa LDA vs LSI sugli stessi K e sullo stesso corpus;
 - LSI reale con TF-IDF + TruncatedSVD, componenti, salienze ed explained variance;
 - topic, termini, distribuzione temporale, documenti rappresentativi;
 - probabilità complete, entropia e documenti con assegnazione incerta;
+- validazione esterna contro export MySLR con matching DOI/titolo, ARI, NMI e matrice di corrispondenza;
 - outlier semantici e relazioni TF-IDF tra documenti;
-- mappa t-SNE, analisi autori e bibliometria;
+- Interactive LDA Explorer con distanza Jensen-Shannon, MDS e rilevanza λ;
+- t-SNE comparabile tra K, ricolorata con le assegnazioni del modello scelto e filtro temporale;
+- analisi autori e bibliometria;
 - citazioni, fonti, open access, tipologie documentali e impatto per topic;
 - export CSV, metodologia JSON e ZIP completo per la riproducibilità.
 
@@ -38,8 +42,12 @@ La matrice document-term viene costruita una sola volta e condivisa tra le confi
 
 Il testo pesato è formato da `2× Title + Abstract + 3× Author Keywords`. La pipeline normalizza concetti equivalenti (per esempio LLM/LLMs/large language model), elimina note di copyright ed editore, applica stopword inglesi e scientifiche, unigrammi e bigrammi.
 
+I campi pesati sono separati prima della costruzione dei bigrammi, così la duplicazione di titolo e keyword non può produrre n-grammi artificiali ai confini. Anche le coppie “frase estesa + acronimo”, come `software development lifecycle (SDLC)`, vengono consolidate in un solo concetto.
+
 Il numero di topic non viene scelto con una singola metrica. Il rank dichiarato combina UMass (28%), NPMI (28%), stabilità (22%), diversità (10%), esclusività (7%) e perplexity (5%). Se viene analizzato un solo K, il software lo dichiara come configurazione richiesta e non come optimum.
 
 LSI usa una selezione separata basata su UMass, NPMI, stabilità, diversità ed explained variance. La perplexity viene indicata come non applicabile: LSI è una decomposizione lineare firmata, non un modello probabilistico. LSI è spesso indicato in letteratura anche come LSA.
 
 Ogni pacchetto di riproducibilità include fingerprint SHA-256 del corpus, versioni delle librerie, seed, parametri, metriche di tutti i candidati, termini e probabilità complete per documento.
+
+Il confronto verificato con gli screenshot MySLR sul corpus Q002 è documentato in [`docs/MYSLR_COMPARISON.md`](docs/MYSLR_COMPARISON.md).

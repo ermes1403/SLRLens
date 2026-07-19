@@ -54,7 +54,7 @@ PHRASE_NORMALIZATION = (
     (r"\blarge[\s-]+language[\s-]+models?\b|\bllms?\b", "large_language_model"),
     (r"\bgenerative[\s-]+artificial[\s-]+intelligence\b|\bgenerative[\s-]+ai\b|\bgenai\b", "generative_ai"),
     (r"\bartificial[\s-]+intelligence\b", "artificial_intelligence"),
-    (r"\bsoftware[\s-]+development[\s-]+life[\s-]+cycle\b|\bsdle\b|\bsdlc\b", "software_development_lifecycle"),
+    (r"\bsoftware[\s-]+development[\s-]+life[\s-]*cycle\b|\bsdle\b|\bsdlc\b", "software_development_lifecycle"),
     (r"\brequirements?[\s-]+engineering\b", "requirements_engineering"),
     (r"\bsoftware[\s-]+engineering\b", "software_engineering"),
     (r"\bsoftware[\s-]+development\b", "software_development"),
@@ -106,6 +106,10 @@ def clean_scientific_text(value: str) -> str:
     text = re.sub(r"\b(?:https?://|www\.)\S+\b", " ", text)
     text = re.sub(r"\b(?:doi|issn|isbn)\s*:\s*\S+", " ", text)
     text = re.sub(r"[^a-z0-9_\-\s]", " ", text)
+    # Phrases followed by their acronym (for example "software development
+    # lifecycle (SDLC)") normalize to the same token twice; collapse that
+    # mechanical duplication after punctuation has been removed.
+    text = re.sub(r"\b([a-z][a-z0-9_]+)(?:\s+\1\b)+", r"\1", text)
     return re.sub(r"\s+", " ", text).strip()
 
 
@@ -114,7 +118,12 @@ def _weighted_text(row: pd.Series) -> str:
     title = clean_scientific_text(row["title"])
     abstract = clean_scientific_text(row["abstract"])
     keywords = clean_scientific_text(row["keywords"].replace(";", " "))
-    return " ".join([title, title, abstract, keywords, keywords, keywords]).strip()
+    # A real token boundary prevents n-grams from spanning duplicated fields.
+    # It is removed from the vocabulary immediately after vectorization.
+    boundary = "zzfieldboundaryzz"
+    return f" {boundary} ".join(
+        [title, title, abstract, keywords, keywords, keywords]
+    ).strip()
 
 
 def normalize_dataset(raw: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, int]]:
@@ -599,16 +608,185 @@ def _project_documents(
     return _scale_coordinates(reduced[:, :2]), "TruncatedSVD on TF-IDF"
 
 
-def _topic_coordinates(model: LatentDirichletAllocation) -> list[dict[str, float | int]]:
-    matrix = model.components_ / np.maximum(model.components_.sum(axis=1, keepdims=True), 1e-12)
-    if len(matrix) == 2:
+def _topic_coordinates(
+    model: LatentDirichletAllocation,
+    prevalence: np.ndarray | None = None,
+) -> list[dict[str, float | int]]:
+    """Project topics with classical MDS over Jensen-Shannon distances.
+
+    This is the same family of distance used by LDAvis. Keeping the projection
+    deterministic makes comparisons between repeated exports reproducible.
+    """
+    probabilities = model.components_ / np.maximum(
+        model.components_.sum(axis=1, keepdims=True), 1e-12
+    )
+    topic_count = len(probabilities)
+    if topic_count == 2:
         coords = np.array([[0.15, 0.5], [0.85, 0.5]])
     else:
-        coords = _scale_coordinates(TruncatedSVD(n_components=2, random_state=42).fit_transform(matrix))
-    return [
-        {"topic": index + 1, "x": float(point[0]), "y": float(point[1])}
-        for index, point in enumerate(coords)
-    ]
+        distances = np.zeros((topic_count, topic_count), dtype=float)
+        for first in range(topic_count):
+            for second in range(first + 1, topic_count):
+                midpoint = 0.5 * (probabilities[first] + probabilities[second])
+                js_divergence = 0.5 * (
+                    np.sum(probabilities[first] * np.log(
+                        np.maximum(probabilities[first], 1e-12)
+                        / np.maximum(midpoint, 1e-12)
+                    ))
+                    + np.sum(probabilities[second] * np.log(
+                        np.maximum(probabilities[second], 1e-12)
+                        / np.maximum(midpoint, 1e-12)
+                    ))
+                )
+                distances[first, second] = distances[second, first] = math.sqrt(
+                    max(float(js_divergence), 0.0)
+                )
+        centering = np.eye(topic_count) - np.ones((topic_count, topic_count)) / topic_count
+        gram = -0.5 * centering @ (distances ** 2) @ centering
+        eigenvalues, eigenvectors = np.linalg.eigh(gram)
+        order = np.argsort(eigenvalues)[::-1][:2]
+        coords = eigenvectors[:, order] * np.sqrt(
+            np.maximum(eigenvalues[order], 0.0)
+        )
+        coords = _scale_coordinates(coords)
+    shares = (
+        np.asarray(prevalence, dtype=float)
+        if prevalence is not None
+        else np.full(topic_count, 1.0 / topic_count)
+    )
+    shares = shares / max(float(shares.sum()), 1e-12)
+    return [{
+        "topic": index + 1,
+        "x": float(point[0]),
+        "y": float(point[1]),
+        "prevalence": float(shares[index]),
+    } for index, point in enumerate(coords)]
+
+
+def _lda_variant_payload(
+    candidate: Candidate,
+    matrix: sparse.csr_matrix,
+    features: np.ndarray,
+    selected: pd.DataFrame,
+) -> dict[str, Any]:
+    """Serialize a complete, lightweight explorer for one already-fitted K."""
+    distribution = candidate.model.transform(matrix)
+    assignments = distribution.argmax(axis=1)
+    confidence = distribution.max(axis=1)
+    entropy = -np.sum(distribution * np.log(np.maximum(distribution, 1e-12)), axis=1)
+    normalized_entropy = entropy / max(math.log(candidate.topics), 1e-12)
+    term_totals = np.asarray(matrix.sum(axis=0)).ravel()
+    global_prob = (term_totals + 1) / (term_totals.sum() + len(term_totals))
+    topic_probabilities = candidate.model.components_ / np.maximum(
+        candidate.model.components_.sum(axis=1, keepdims=True), 1e-12
+    )
+    across_topics = topic_probabilities.sum(axis=0)
+    topics = []
+    for topic_index, component_prob in enumerate(topic_probabilities):
+        log_probability = np.log(np.maximum(component_prob, 1e-12))
+        log_lift = np.log(np.maximum(component_prob / global_prob, 1e-12))
+        # Preserve the union of terms that can become relevant at different
+        # lambda values, instead of freezing the explorer at one arbitrary λ.
+        relevant_indices: set[int] = set()
+        for lambda_value in np.linspace(0.0, 1.0, 11):
+            relevance = lambda_value * log_probability + (1.0 - lambda_value) * log_lift
+            relevant_indices.update(
+                int(index) for index in np.argsort(relevance)[-45:]
+            )
+        default_relevance = 0.6 * log_probability + 0.4 * log_lift
+        ordered_indices = sorted(
+            relevant_indices,
+            key=lambda index: default_relevance[index],
+            reverse=True,
+        )[:160]
+        words = [{
+            "term": str(features[word_index]).replace("_", " "),
+            "token": str(features[word_index]),
+            "weight": float(component_prob[word_index]),
+            "topic_frequency": float(candidate.model.components_[topic_index, word_index]),
+            "frequency": int(term_totals[word_index]),
+            "log_lift": float(log_lift[word_index]),
+            "log_prob": float(log_probability[word_index]),
+            "exclusivity": float(
+                component_prob[word_index] / max(across_topics[word_index], 1e-12)
+            ),
+        } for word_index in ordered_indices]
+        label_words: list[str] = []
+        for word in words:
+            parts = set(word["term"].split())
+            if any(
+                parts <= set(existing.split()) or set(existing.split()) <= parts
+                for existing in label_words
+            ):
+                continue
+            label_words.append(word["term"])
+            if len(label_words) == 3:
+                break
+        rows = np.where(assignments == topic_index)[0]
+        documents = sorted(({
+            "id": selected.iloc[row]["id"],
+            "title": selected.iloc[row]["title"],
+            "authors": selected.iloc[row]["authors"],
+            "year": int(selected.iloc[row]["year_num"]) or None,
+            "weight": float(distribution[row, topic_index]),
+            "entropy": float(normalized_entropy[row]),
+        } for row in rows), key=lambda item: item["weight"], reverse=True)
+        topics.append({
+            "id": topic_index + 1,
+            "label": " · ".join(label_words),
+            "document_count": int(len(rows)),
+            "weight_sum": float(distribution[:, topic_index].sum()),
+            "prevalence": float(distribution[:, topic_index].sum() / len(selected)),
+            "words": words,
+            "documents": documents,
+        })
+    year_topic: dict[int, list[int]] = defaultdict(lambda: [0] * candidate.topics)
+    year_topic_soft: dict[int, list[float]] = defaultdict(
+        lambda: [0.0] * candidate.topics
+    )
+    for row_index, row in selected.iterrows():
+        if row["year_num"]:
+            year = int(row["year_num"])
+            year_topic[year][int(assignments[row_index])] += 1
+            year_topic_soft[year] = (
+                np.asarray(year_topic_soft[year]) + distribution[row_index]
+            ).tolist()
+    return {
+        "topics_count": candidate.topics,
+        "recommended": False,
+        "metrics": {
+            "perplexity": candidate.perplexity,
+            "log_likelihood_per_word": candidate.log_likelihood_per_word,
+            "coherence_umass": candidate.coherence_umass,
+            "coherence_npmi": candidate.coherence_npmi,
+            "diversity": candidate.diversity,
+            "exclusivity": candidate.exclusivity,
+            "stability": candidate.stability,
+            "selection_score": candidate.selection_score,
+            "runs": candidate.runs,
+        },
+        "topics": topics,
+        "topic_coordinates": _topic_coordinates(
+            candidate.model, distribution.sum(axis=0)
+        ),
+        "years": [{
+            "year": year,
+            "counts": counts_by_topic,
+            "soft_counts": year_topic_soft[year],
+        } for year, counts_by_topic in sorted(year_topic.items())],
+        "document_assignments": [{
+            "id": selected.iloc[index]["id"],
+            "topic": int(assignments[index]) + 1,
+            "confidence": float(confidence[index]),
+            "second_topic": int(np.argsort(distribution[index])[-2]) + 1,
+            "second_weight": float(np.sort(distribution[index])[-2]),
+            "entropy": float(normalized_entropy[index]),
+            "uncertain": bool(
+                confidence[index] < 0.60 or normalized_entropy[index] > 0.72
+            ),
+            "topic_distribution": [float(value) for value in distribution[index]],
+        } for index in range(len(selected))],
+    }
 
 
 def _bibliometrics(selected: pd.DataFrame, assignments: np.ndarray) -> dict[str, Any]:
@@ -682,6 +860,7 @@ def analyze(
     keep = np.array([
         term not in GENERIC_STOP_WORDS
         and not any(part in GENERIC_STOP_WORDS for part in term.split())
+        and "zzfieldboundaryzz" not in term
         for term in features
     ])
     matrix = matrix[:, keep].tocsr()
@@ -731,6 +910,14 @@ def analyze(
         else "optimized" if len(seeds) > 1
         else "screening"
     )
+    lda_models = [
+        _lda_variant_payload(candidate, matrix, features, selected)
+        for candidate in candidates
+    ]
+    for model_payload in lda_models:
+        model_payload["recommended"] = (
+            model_payload["topics_count"] == best.topics
+        )
 
     lsi_payload: dict[str, Any] | None = None
     if include_lsi:
@@ -991,6 +1178,7 @@ def analyze(
             "seconds": item.seconds,
             "runs": item.runs,
         } for item in candidates],
+        "lda_models": lda_models,
         "lsi": lsi_payload,
         "algorithm_comparison": [{
             "topics": candidate.topics,
@@ -1006,7 +1194,7 @@ def analyze(
             ),
         } for index, candidate in enumerate(candidates)],
         "topics": topics,
-        "topic_coordinates": _topic_coordinates(best.model),
+        "topic_coordinates": _topic_coordinates(best.model, distribution.sum(axis=0)),
         "years": [{
             "year": year,
             "counts": counts_by_topic,
@@ -1038,6 +1226,10 @@ def analyze(
             "iterations_per_run": iterations,
             "learning_method": learning_method,
             "projection": projection_method,
+            "topic_projection": (
+                "Classical MDS (principal coordinates) over pairwise "
+                "Jensen-Shannon topic distances"
+            ),
             "similarity": "Cosine similarity on TF-IDF",
             "uncertainty_rule": "max topic probability < 0.60 OR normalized entropy > 0.72",
             "strong_assignment_rule": "max topic probability >= 0.70",
