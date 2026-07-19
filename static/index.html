@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Analisi LDA rapida e tracciabile per revisioni sistematiche della letteratura.">
+  <title>SLR Lens — Topic modeling rapido</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="/" aria-label="SLR Lens">
+        <span class="brand-mark">S</span>
+        <span><strong>SLR Lens</strong><small>Research intelligence</small></span>
+      </a>
+      <nav>
+        <button class="nav-item active" data-go="import"><span>⌁</span> Nuova analisi</button>
+        <button class="nav-item" data-go="review"><span>▤</span> Corpus</button>
+        <button class="nav-item" data-go="results"><span>◫</span> Risultati</button>
+      </nav>
+      <div class="sidebar-note">
+        <span class="status-dot"></span>
+        <strong>Motore LDA locale</strong>
+        <p>I documenti vengono elaborati sul server dell'app con LDA e LSI reali.</p>
+      </div>
+      <div class="method-chip">LDA · LSI · NPMI · STABILITY</div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <button class="mobile-menu" aria-label="Apri menu">☰</button>
+        <div>
+          <p class="eyebrow">SYSTEMATIC LITERATURE REVIEW</p>
+          <h1 id="page-title">Nuova analisi</h1>
+        </div>
+        <div class="top-actions">
+          <span class="engine-badge"><i></i> Engine pronto</span>
+          <button class="icon-button" title="Informazioni sul metodo">?</button>
+        </div>
+      </header>
+
+      <section id="view-import" class="view active">
+        <div class="hero">
+          <div class="hero-copy">
+            <span class="pill">Topic modeling, senza attese infinite</span>
+            <h2>Dal file Scopus ai topic<br><em>in pochi secondi.</em></h2>
+            <p>Importa CSV o Excel. SLR Lens deduplica il corpus, confronta più configurazioni LDA in parallelo e rende ogni risultato esplorabile ed esportabile.</p>
+            <div class="feature-row">
+              <span>✓ LDA + LSI reali</span>
+              <span>✓ UMass + NPMI</span>
+              <span>✓ Output tracciabile</span>
+            </div>
+          </div>
+          <div class="hero-orbit" aria-hidden="true">
+            <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
+            <div class="core">LDA<small>parallel</small></div>
+            <span class="node n1">topics</span><span class="node n2">authors</span>
+            <span class="node n3">papers</span><span class="node n4">years</span>
+          </div>
+        </div>
+
+        <div class="import-grid">
+          <div class="upload-card">
+            <div class="step-label">01 · IMPORTA IL CORPUS</div>
+            <label id="drop-zone" class="drop-zone" for="file-input">
+              <input id="file-input" type="file" accept=".csv,.xlsx,.xls">
+              <span class="upload-icon">⇧</span>
+              <strong>Trascina qui l'export di Scopus</strong>
+              <span>oppure clicca per selezionare un file</span>
+              <small>CSV o XLSX · massimo 30 MB</small>
+            </label>
+            <div id="upload-status" class="inline-status hidden"></div>
+          </div>
+          <div class="format-card">
+            <div class="step-label">CAMPI UTILIZZATI</div>
+            <h3>Compatibile con l'export standard</h3>
+            <ul class="field-list">
+              <li><b>Title</b><span>obbligatorio</span></li>
+              <li><b>Abstract</b><span>raccomandato</span></li>
+              <li><b>Author Keywords</b><span>raccomandato</span></li>
+              <li><b>Year, Authors, DOI</b><span>per analisi e deduplica</span></li>
+            </ul>
+            <p class="microcopy">La pipeline usa titolo, abstract e keyword. DOI, EID e titolo normalizzato eliminano i duplicati.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-review" class="view">
+        <div class="section-heading">
+          <div><p class="eyebrow">02 · VERIFICA IL CORPUS</p><h2>Documenti importati</h2></div>
+          <button id="start-analysis" class="primary-button">Avvia analisi LDA <span>→</span></button>
+        </div>
+        <div class="stats-grid" id="dataset-stats"></div>
+        <div class="workspace-grid">
+          <div class="paper-panel">
+            <div class="panel-toolbar">
+              <label class="search-box"><span>⌕</span><input id="paper-search" placeholder="Cerca titolo, autore o rivista"></label>
+              <select id="year-filter"><option value="">Tutti gli anni</option></select>
+              <span id="selected-count" class="selection-count"></span>
+            </div>
+            <div class="paper-table-wrap">
+              <table class="paper-table">
+                <thead><tr><th></th><th>Documento</th><th>Anno</th><th>Citazioni</th></tr></thead>
+                <tbody id="paper-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+          <aside class="config-panel">
+            <div class="step-label">CONFIGURAZIONE</div>
+            <h3>Ricerca dei topic</h3>
+            <label>Modalità
+              <select id="analysis-mode">
+                <option value="accurate">Rigore massimo · 3 seed, batch</option>
+                <option value="fast">Rapida · 1 seed, online</option>
+              </select>
+            </label>
+            <label>Numero di topic da confrontare
+              <input id="topic-counts" value="2, 3, 4, 5, 6, 7, 8" inputmode="numeric">
+            </label>
+            <div class="algorithm-lock">
+              <span class="lock-icon">◆</span>
+              <div><small>ALGORITMI REALI</small><strong>LDA probabilistico</strong><p>Confronto opzionale con LSI/TruncatedSVD.</p>
+                <label class="inline-check"><input id="include-lsi" type="checkbox" checked> Calcola anche LSI</label>
+              </div>
+            </div>
+            <div class="speed-note"><b>Validazione reale</b><p>UMass + NPMI + stabilità multi-seed + diversità + esclusività + perplexity. Nessun punteggio simulato.</p></div>
+          </aside>
+        </div>
+      </section>
+
+      <section id="view-results" class="view">
+        <div class="section-heading results-heading">
+          <div><p class="eyebrow">03 · ESPLORA I RISULTATI</p><h2>Panoramica LDA</h2></div>
+          <div class="button-row">
+            <a id="method-export" class="secondary-button">Metodo JSON</a>
+            <a id="bundle-export" class="secondary-button">Pacchetto riproducibile</a>
+            <a id="data-export" class="primary-button">Esporta dataset</a>
+          </div>
+        </div>
+        <div id="result-kpis" class="stats-grid result-kpis"></div>
+        <div class="result-tabs" role="tablist">
+          <button class="active" data-tab="overview">Panoramica</button>
+          <button data-tab="topics">Topic & documenti</button>
+          <button data-tab="map">Mappa documenti</button>
+          <button data-tab="authors">Autori</button>
+          <button data-tab="quality">Qualità & incertezza</button>
+          <button data-tab="bibliometrics">Bibliometria</button>
+          <button data-tab="method">Metodo</button>
+        </div>
+
+        <div id="tab-overview" class="tab-panel active">
+          <div class="dashboard-grid">
+            <article class="chart-card">
+              <div class="card-head"><div><small>MODEL COMPARISON</small><h3>LDA vs LSI per numero di topic</h3></div><span>NPMI ↑</span></div>
+              <div id="coherence-chart" class="line-chart"></div>
+              <div class="chart-legend"><span><i style="background:#2866ff"></i>LDA probabilistico</span><span><i style="background:#ff9a48"></i>LSI / TruncatedSVD</span></div>
+            </article>
+            <article class="chart-card">
+              <div class="card-head"><div><small>TEMPORAL VIEW</small><h3>Paper per topic nel tempo</h3></div></div>
+              <div id="year-chart" class="bar-chart"></div>
+            </article>
+          </div>
+          <div id="topic-summary" class="topic-summary-grid"></div>
+        </div>
+
+        <div id="tab-topics" class="tab-panel">
+          <div class="explorer-toolbar">
+            <div><small>ALGORITMO DA ESPLORARE</small><strong id="algorithm-description">LDA · probabilità per documento</strong></div>
+            <select id="topic-algorithm"><option value="lda">LDA probabilistico</option><option value="lsi">LSI / TruncatedSVD</option></select>
+          </div>
+          <div class="topic-explorer">
+            <aside id="topic-selector" class="topic-selector"></aside>
+            <div class="topic-detail">
+              <div id="word-cloud" class="word-cloud"></div>
+              <div class="term-table-wrap">
+                <table class="paper-table"><thead><tr><th>Termine</th><th>Frequenza</th><th>Log lift</th><th>Log prob</th></tr></thead><tbody id="term-table"></tbody></table>
+              </div>
+              <h3 class="document-list-title">Documenti rappresentativi</h3>
+              <div id="topic-documents" class="document-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="tab-map" class="tab-panel">
+          <article class="chart-card map-card">
+            <div class="card-head"><div><small>DOCUMENT SIMILARITY</small><h3>Mappa semantica del corpus</h3></div><span id="projection-label">t-SNE su TF-IDF</span></div>
+            <canvas id="document-map"></canvas>
+            <div id="map-tooltip" class="map-tooltip hidden"></div>
+          </article>
+        </div>
+
+        <div id="tab-authors" class="tab-panel">
+          <div class="dashboard-grid">
+            <article class="chart-card"><div class="card-head"><div><small>PRODUCTIVITY</small><h3>Autori più presenti</h3></div></div><div id="author-bars" class="horizontal-bars"></div></article>
+            <article class="chart-card"><div class="card-head"><div><small>COLLABORATION</small><h3>Connessioni tra autori</h3></div></div><div id="coauthor-list" class="connection-list"></div></article>
+          </div>
+        </div>
+
+        <div id="tab-quality" class="tab-panel">
+          <div id="quality-stats" class="stats-grid"></div>
+          <div class="dashboard-grid quality-grid">
+            <article class="chart-card">
+              <div class="card-head"><div><small>ASSIGNMENT AUDIT</small><h3>Documenti da verificare</h3></div><span>ordinati per incertezza</span></div>
+              <div id="uncertain-documents" class="audit-list"></div>
+            </article>
+            <article class="chart-card">
+              <div class="card-head"><div><small>MODEL QUALITY</small><h3>Diagnostica del modello</h3></div></div>
+              <div id="quality-diagnostics" class="diagnostic-list"></div>
+            </article>
+          </div>
+        </div>
+
+        <div id="tab-bibliometrics" class="tab-panel">
+          <div id="bibliometric-stats" class="stats-grid"></div>
+          <div class="dashboard-grid">
+            <article class="chart-card"><div class="card-head"><div><small>SOURCES</small><h3>Riviste e fonti principali</h3></div></div><div id="source-bars" class="horizontal-bars"></div></article>
+            <article class="chart-card"><div class="card-head"><div><small>IMPACT BY TOPIC</small><h3>Impatto citazionale</h3></div></div><div id="topic-impact" class="impact-grid"></div></article>
+          </div>
+          <div class="dashboard-grid lower-grid">
+            <article class="chart-card compact-card"><div class="card-head"><div><small>DOCUMENT TYPES</small><h3>Tipologie documentali</h3></div></div><div id="document-types" class="tag-cloud"></div></article>
+            <article class="chart-card compact-card"><div class="card-head"><div><small>DATA COVERAGE</small><h3>Copertura metadati</h3></div></div><div id="metadata-coverage" class="diagnostic-list"></div></article>
+          </div>
+        </div>
+
+        <div id="tab-method" class="tab-panel">
+          <article class="method-card">
+            <div><span class="method-number">1</span><h3>Preparazione</h3><p>Titolo ×2, abstract e keyword ×3; frasi controllate, boilerplate editoriale e stopword rimossi.</p></div>
+            <div><span class="method-number">2</span><h3>LDA + LSI reali</h3><p>LDA produce probabilità; LSI usa TF-IDF e TruncatedSVD con componenti firmate. Nessuna metrica viene simulata.</p></div>
+            <div><span class="method-number">3</span><h3>Selezione multi-metrica</h3><p>UMass, NPMI, stabilità, diversità, esclusività e perplexity concorrono alla scelta documentata.</p></div>
+            <div><span class="method-number">4</span><h3>Riproducibilità</h3><p>Assegnazioni, incertezza, termini, candidati e parametri sono esportati in un unico pacchetto.</p></div>
+          </article>
+          <div id="candidate-table" class="candidate-table"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="analysis-overlay" class="analysis-overlay hidden">
+    <div class="analysis-modal">
+      <div class="spinner-orbit"><i></i><i></i><i></i><span>LDA</span></div>
+      <p class="eyebrow">ANALISI IN CORSO</p>
+      <h2>Stiamo confrontando i topic</h2>
+      <p id="analysis-progress-text">Vettorizzazione del corpus…</p>
+      <div class="progress-track"><span></span></div>
+      <small>Il calcolo avviene in parallelo e normalmente richiede pochi secondi.</small>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
