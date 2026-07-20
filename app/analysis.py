@@ -21,13 +21,23 @@ from sklearn.decomposition import LatentDirichletAllocation, TruncatedSVD
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 from sklearn.manifold import TSNE
 
+from app.bibliometrics import calculate_bibliometrics
+
 
 COLUMN_ALIASES = {
     "title": ("title", "document title", "titolo"),
     "abstract": ("abstract", "description", "riassunto"),
     "year": ("year", "publication year", "anno"),
     "authors": ("author full names", "authors", "author(s)", "autori"),
-    "keywords": ("author keywords", "index keywords", "keywords", "parole chiave"),
+    "keywords": ("author keywords", "keywords", "parole chiave"),
+    "index_keywords": ("index keywords", "indexed keywords"),
+    "author_ids": ("author(s) id", "author ids", "scopus author id"),
+    "affiliations": ("affiliations", "author affiliations"),
+    "authors_with_affiliations": ("authors with affiliations",),
+    "correspondence_address": ("correspondence address",),
+    "references": ("references", "cited references", "bibliography"),
+    "publisher": ("publisher",),
+    "abbreviated_source": ("abbreviated source title",),
     "doi": ("doi",),
     "eid": ("eid", "scopus id", "document id", "id"),
     "source": ("source title", "publication name", "journal", "source"),
@@ -789,40 +799,6 @@ def _lda_variant_payload(
     }
 
 
-def _bibliometrics(selected: pd.DataFrame, assignments: np.ndarray) -> dict[str, Any]:
-    sources = Counter(source for source in selected["source"] if source)
-    types = Counter(value for value in selected["document_type"] if value)
-    languages = Counter(value for value in selected["language"] if value)
-    open_access_count = int(selected["open_access"].str.len().gt(0).sum())
-    citations = selected["citations_num"].to_numpy()
-    annualized = selected["avg_citations_num"].to_numpy(dtype=float)
-    topic_impact = []
-    for topic in sorted(set(assignments)):
-        values = citations[assignments == topic]
-        topic_impact.append({
-            "topic": int(topic) + 1,
-            "papers": int(len(values)),
-            "citations": int(values.sum()),
-            "mean_citations": float(values.mean()) if len(values) else 0.0,
-            "mean_annualized_citations": float(
-                annualized[assignments == topic].mean()
-            ) if len(values) else 0.0,
-        })
-    return {
-        "total_citations": int(citations.sum()),
-        "mean_citations": float(citations.mean()) if len(citations) else 0.0,
-        "median_citations": float(np.median(citations)) if len(citations) else 0.0,
-        "mean_annualized_citations": float(annualized.mean()) if len(annualized) else 0.0,
-        "open_access_count": open_access_count,
-        "open_access_rate": open_access_count / max(len(selected), 1),
-        "sources_count": len(sources),
-        "top_sources": [{"name": name, "papers": count} for name, count in sources.most_common(20)],
-        "document_types": [{"name": name, "papers": count} for name, count in types.most_common()],
-        "languages": [{"name": name, "papers": count} for name, count in languages.most_common()],
-        "topic_impact": topic_impact,
-    }
-
-
 def analyze(
     data: pd.DataFrame,
     topic_counts: list[int],
@@ -1208,7 +1184,9 @@ def analyze(
         "documents": documents,
         "connections": connections,
         "quality": quality,
-        "bibliometrics": _bibliometrics(selected, assignments),
+        "bibliometrics": calculate_bibliometrics(
+            selected, assignments, current_year=pd.Timestamp.now().year
+        ),
         "methodology": {
             "text_fields": "2× Title + Abstract + 3× Author Keywords",
             "preprocessing": "Unicode normalization, publisher boilerplate removal, controlled phrase normalization, English and scientific stopwords",

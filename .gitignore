@@ -2,7 +2,4 @@
 __pycache__/
 .pytest_cache/
 *.py[cod]
-.server.log
-.server-out.log
-.server-error.log
-.server-v2.log
+.server*.log

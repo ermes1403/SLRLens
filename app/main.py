@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "static"
 MAX_UPLOAD_BYTES = 30 * 1024 * 1024
 
-app = FastAPI(title="SLR Lens", version="2.2.0")
+app = FastAPI(title="SLR Lens", version="3.0.0")
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 datasets: dict[str, pd.DataFrame] = {}
@@ -76,8 +76,8 @@ def index() -> FileResponse:
 def health() -> dict:
     return {
         "status": "ok",
-        "version": "2.2.0",
-        "algorithms": ["LDA", "LSI"],
+        "version": "3.0.0",
+        "algorithms": ["LDA", "LSI", "Bibliometric Intelligence"],
         "validation": "multi-metric, multi-seed, explorable LDA candidates and real LDA-vs-LSI comparison",
         "lsi": True,
     }
@@ -382,8 +382,39 @@ def export_reproducibility_bundle(analysis_id: str) -> Response:
     diagnostics["external_validation"] = result.get("external_validation")
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        bibliometrics = result["bibliometrics"]
         archive.writestr("document_assignments.csv", pd.DataFrame(document_rows).to_csv(index=False))
         archive.writestr("topic_terms.csv", pd.DataFrame(term_rows).to_csv(index=False))
+        archive.writestr(
+            "bibliometrics/authors_impact.csv",
+            pd.DataFrame(bibliometrics["authors"]).to_csv(index=False),
+        )
+        archive.writestr(
+            "bibliometrics/sources_bradford.csv",
+            pd.DataFrame(bibliometrics["top_sources"]).to_csv(index=False),
+        )
+        archive.writestr(
+            "bibliometrics/countries_collaboration.csv",
+            pd.DataFrame(bibliometrics["countries"]).to_csv(index=False),
+        )
+        archive.writestr(
+            "bibliometrics/most_cited_documents.csv",
+            pd.DataFrame(bibliometrics["most_cited_documents"]).to_csv(index=False),
+        )
+        archive.writestr(
+            "bibliometrics/keyword_network_edges.csv",
+            pd.DataFrame(
+                bibliometrics["conceptual"]["keyword_network"]["edges"]
+            ).to_csv(index=False),
+        )
+        archive.writestr(
+            "bibliometrics/thematic_map.csv",
+            pd.DataFrame(bibliometrics["conceptual"]["thematic_map"]).to_csv(index=False),
+        )
+        archive.writestr(
+            "bibliometrics/intellectual_structure.json",
+            json.dumps(bibliometrics["intellectual"], indent=2, ensure_ascii=False),
+        )
         archive.writestr(
             "methodology_and_diagnostics.json",
             json.dumps(diagnostics, indent=2, ensure_ascii=False),
@@ -393,7 +424,9 @@ def export_reproducibility_bundle(analysis_id: str) -> Response:
             "SLR Lens reproducibility bundle\n"
             "Contains LDA and LSI assignments, topic terms, all candidate metrics and the exact methodology.\n"
             "Higher UMass/NPMI/stability/diversity/exclusivity is better; lower perplexity is better.\n"
-            "LSI is a real TruncatedSVD implementation. Perplexity does not apply to LSI.\n",
+            "LSI is a real TruncatedSVD implementation. Perplexity does not apply to LSI.\n"
+            "Bibliometric tables contain Bradford, Lotka, author impact, collaboration, "
+            "co-word and reference-gated intellectual structure outputs.\n",
         )
     return Response(
         buffer.getvalue(),

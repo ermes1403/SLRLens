@@ -161,7 +161,7 @@
           <button data-tab="map">Mappa documenti</button>
           <button data-tab="authors">Autori</button>
           <button data-tab="quality">Qualità & incertezza</button>
-          <button data-tab="bibliometrics">Bibliometria</button>
+          <button data-tab="bibliometrics">Bibliometric Intelligence</button>
           <button data-tab="method">Metodo</button>
         </div>
 
@@ -269,15 +269,71 @@
         </div>
 
         <div id="tab-bibliometrics" class="tab-panel">
+          <article class="bibliometric-hero">
+            <div><small>BIBLIOMETRIX + TOPIC INTELLIGENCE</small><h2>La struttura completa della conoscenza, nello stesso workflow SLR</h2><p>Performance scientifica, fonti, autori, documenti, collaborazioni e mappe concettuali sono calcolati sui metadati reali e collegati ai topic probabilistici.</p></div>
+            <span id="reference-coverage-badge"></span>
+          </article>
           <div id="bibliometric-stats" class="stats-grid"></div>
-          <div class="dashboard-grid">
-            <article class="chart-card"><div class="card-head"><div><small>SOURCES</small><h3>Riviste e fonti principali</h3></div></div><div id="source-bars" class="horizontal-bars"></div></article>
-            <article class="chart-card"><div class="card-head"><div><small>IMPACT BY TOPIC</small><h3>Impatto citazionale</h3></div></div><div id="topic-impact" class="impact-grid"></div></article>
+          <div class="bibliometric-nav">
+            <button data-biblio-jump="performance">Performance</button><button data-biblio-jump="sources">Fonti & autori</button><button data-biblio-jump="social">Struttura sociale</button><button data-biblio-jump="conceptual">Struttura concettuale</button><button data-biblio-jump="intellectual">Struttura intellettuale</button>
           </div>
-          <div class="dashboard-grid lower-grid">
-            <article class="chart-card compact-card"><div class="card-head"><div><small>DOCUMENT TYPES</small><h3>Tipologie documentali</h3></div></div><div id="document-types" class="tag-cloud"></div></article>
-            <article class="chart-card compact-card"><div class="card-head"><div><small>DATA COVERAGE</small><h3>Copertura metadati</h3></div></div><div id="metadata-coverage" class="diagnostic-list"></div></article>
-          </div>
+
+          <section id="biblio-performance" class="biblio-section">
+            <div class="section-title"><span>01</span><div><small>PERFORMANCE ANALYSIS</small><h2>Produzione e impatto</h2></div></div>
+            <div class="dashboard-grid">
+              <article class="chart-card"><div class="card-head"><div><small>ANNUAL SCIENTIFIC PRODUCTION</small><h3>Evoluzione delle pubblicazioni</h3></div><span id="growth-rate"></span></div><div id="annual-production" class="biblio-svg"></div></article>
+              <article class="chart-card"><div class="card-head"><div><small>IMPACT BY LDA TOPIC</small><h3>Impatto citazionale</h3></div></div><div id="topic-impact" class="impact-grid"></div></article>
+            </div>
+            <div class="dashboard-grid lower-grid">
+              <article class="chart-card compact-card"><div class="card-head"><div><small>MOST CITED DOCUMENTS</small><h3>Documenti più influenti</h3></div></div><div id="most-cited-documents" class="rank-table"></div></article>
+              <article class="chart-card compact-card"><div class="card-head"><div><small>DATA COVERAGE</small><h3>Copertura e tipologie</h3></div></div><div id="metadata-coverage" class="diagnostic-list"></div><div id="document-types" class="tag-cloud metadata-tags"></div></article>
+            </div>
+          </section>
+
+          <section id="biblio-sources" class="biblio-section">
+            <div class="section-title"><span>02</span><div><small>SOURCES & AUTHORS</small><h2>Core journals e leadership scientifica</h2></div></div>
+            <div class="dashboard-grid">
+              <article class="chart-card"><div class="card-head"><div><small>BRADFORD'S LAW</small><h3>Nucleo delle fonti</h3></div></div><div id="bradford-zones" class="bradford-grid"></div><div id="source-bars" class="horizontal-bars"></div></article>
+              <article class="chart-card"><div class="card-head"><div><small>AUTHOR IMPACT</small><h3>Produttività e indici h/g/m nel corpus</h3></div><span id="lotka-beta"></span></div><div id="author-impact" class="rank-table"></div></article>
+            </div>
+          </section>
+
+          <section id="biblio-social" class="biblio-section">
+            <div class="section-title"><span>03</span><div><small>SOCIAL STRUCTURE</small><h2>Collaborazioni tra persone, istituzioni e paesi</h2></div></div>
+            <div id="collaboration-stats" class="stats-grid slim-stats"></div>
+            <div class="dashboard-grid">
+              <article class="chart-card network-card"><div class="card-head"><div><small>CO-AUTHORSHIP</small><h3>Rete di collaborazione autoriale</h3></div></div><div id="coauthor-network" class="network-viz"></div></article>
+              <article class="chart-card"><div class="card-head"><div><small>COUNTRY COLLABORATION</small><h3>SCP, MCP e legami internazionali</h3></div></div><div id="country-collaboration" class="country-list"></div><div id="country-network" class="mini-network"></div></article>
+            </div>
+            <article class="chart-card lower-grid compact-card"><div class="card-head"><div><small>AFFILIATIONS</small><h3>Istituzioni più presenti</h3></div></div><div id="affiliation-bars" class="horizontal-bars"></div></article>
+          </section>
+
+          <section id="biblio-conceptual" class="biblio-section">
+            <div class="section-title"><span>04</span><div><small>CONCEPTUAL STRUCTURE</small><h2>Fronti di ricerca e temi emergenti</h2></div></div>
+            <div class="dashboard-grid">
+              <article class="chart-card network-card"><div class="card-head"><div><small>CO-WORD ANALYSIS</small><h3>Rete di co-occorrenza delle keyword</h3></div></div><div id="keyword-network" class="network-viz"></div></article>
+              <article class="chart-card"><div class="card-head"><div><small>THEMATIC MAP</small><h3>Centralità e densità dei temi</h3></div></div><div id="thematic-map" class="thematic-map"></div></article>
+            </div>
+            <article class="chart-card lower-grid compact-card"><div class="card-head"><div><small>TREND TOPICS</small><h3>Traiettorie temporali delle keyword</h3></div></div><div id="trend-topics" class="trend-grid"></div></article>
+            <div class="dashboard-grid lower-grid">
+              <article class="chart-card"><div class="card-head"><div><small>THREE-FIELD PLOT</small><h3>Autori → keyword → fonti</h3></div></div><div id="three-field-plot" class="three-field-plot"></div></article>
+              <article class="chart-card"><div class="card-head"><div><small>THEMATIC EVOLUTION</small><h3>Come cambiano i fronti di ricerca</h3></div></div><div id="thematic-evolution" class="evolution-plot"></div></article>
+            </div>
+          </section>
+
+          <section id="biblio-intellectual" class="biblio-section">
+            <div class="section-title"><span>05</span><div><small>INTELLECTUAL STRUCTURE</small><h2>Co-citazione e bibliographic coupling</h2></div></div>
+            <article id="intellectual-gate" class="reference-gate"></article>
+            <div id="intellectual-content" class="dashboard-grid hidden">
+              <article class="chart-card network-card"><div class="card-head"><div><small>CO-CITATION</small><h3>Riferimenti citati insieme</h3></div></div><div id="cocitation-network" class="network-viz"></div></article>
+              <article class="chart-card"><div class="card-head"><div><small>BIBLIOGRAPHIC COUPLING</small><h3>Documenti con basi intellettuali condivise</h3></div></div><div id="coupling-list" class="connection-list"></div></article>
+            </div>
+          </section>
+
+          <article class="method-note">
+            <strong>Nessun dato sintetico.</strong>
+            <span>Ogni indicatore deriva dai record importati. Le funzioni che richiedono metadati assenti vengono bloccate con una spiegazione, non sostituite da valori inventati.</span>
+          </article>
         </div>
 
         <div id="tab-method" class="tab-panel">

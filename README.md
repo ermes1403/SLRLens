@@ -1,6 +1,6 @@
 # SLR Lens
 
-Applicazione web locale per analizzare export Scopus e dataset MySLR con **Latent Dirichlet Allocation (LDA)** e un confronto reale con **Latent Semantic Indexing (LSI)**. La versione 2 privilegia validazione scientifica, velocità e riproducibilità.
+Applicazione web locale per analizzare export Scopus e dataset MySLR con **Latent Dirichlet Allocation (LDA)**, **Latent Semantic Indexing (LSI)** e una suite integrata di **bibliometric intelligence**. La versione 3 unisce topic modeling, science mapping, audit dell'incertezza e analisi bibliometrica in un solo workflow riproducibile.
 
 ## Funzioni
 
@@ -20,6 +20,11 @@ Applicazione web locale per analizzare export Scopus e dataset MySLR con **Laten
 - Interactive LDA Explorer con distanza Jensen-Shannon, MDS e rilevanza λ;
 - t-SNE comparabile tra K, ricolorata con le assegnazioni del modello scelto e filtro temporale;
 - analisi autori e bibliometria;
+- produzione scientifica annuale, impatto e documenti più citati;
+- Bradford, Lotka e indici h/g/m calcolati nel corpus;
+- reti di co-autorship, affiliazioni e collaborazione SCP/MCP tra paesi;
+- co-word network, thematic map, trend topic, Three-Field Plot ed evoluzione tematica;
+- co-citazione e bibliographic coupling condizionali alla presenza delle cited references;
 - citazioni, fonti, open access, tipologie documentali e impatto per topic;
 - export CSV, metodologia JSON e ZIP completo per la riproducibilità.
 
@@ -48,6 +53,17 @@ Il numero di topic non viene scelto con una singola metrica. Il rank dichiarato 
 
 LSI usa una selezione separata basata su UMass, NPMI, stabilità, diversità ed explained variance. La perplexity viene indicata come non applicabile: LSI è una decomposizione lineare firmata, non un modello probabilistico. LSI è spesso indicato in letteratura anche come LSA.
 
-Ogni pacchetto di riproducibilità include fingerprint SHA-256 del corpus, versioni delle librerie, seed, parametri, metriche di tutti i candidati, termini e probabilità complete per documento.
+Ogni pacchetto di riproducibilità include fingerprint SHA-256 del corpus, versioni delle librerie, seed, parametri, metriche di tutti i candidati, termini e probabilità complete per documento, tabelle bibliometriche, reti keyword, thematic map e stato di copertura delle references.
+
+## Benchmark verificato
+
+Sul corpus Scopus Q002 usato nel confronto con MySLR:
+
+- 144/144 record elaborati, senza duplicati;
+- 924 citazioni, 103 fonti, 562 autori e 32 paesi ricostruiti;
+- 43 nodi e 175 archi nella rete di co-word;
+- LDA + LSI per K=2,3,4 e suite bibliometrica completati in circa 9 secondi in modalità rapida sulla macchina di sviluppo.
+
+Il tempo dipende dall'hardware e dalla modalità scelta. Non viene dichiarato un vantaggio “10×” senza un benchmark controllato sulla stessa macchina.
 
 Il confronto verificato con gli screenshot MySLR sul corpus Q002 è documentato in [`docs/MYSLR_COMPARISON.md`](docs/MYSLR_COMPARISON.md).

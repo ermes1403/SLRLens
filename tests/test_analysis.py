@@ -21,6 +21,19 @@ def sample_frame() -> pd.DataFrame:
                 "Author Keywords": keywords,
                 "Year": 2022 + cycle,
                 "Authors": f"Author {index}; Researcher {cycle}",
+                "Index Keywords": f"{keywords}; software engineering",
+                "Affiliations": (
+                    f"University {index}, City, Italy; "
+                    f"Research Lab {cycle}, London, United Kingdom"
+                    if index % 2 == 0 else f"University {index}, Berlin, Germany"
+                ),
+                "Correspondence Address": "Department of Computing, Rome, Italy",
+                "Source title": f"Journal of Software Research {index % 3}",
+                "Document Type": "Article",
+                "References": (
+                    "Smith J., Foundations of Software Engineering, 2020; "
+                    f"Reference Group {index % 3}, Empirical AI Studies, 2021"
+                ),
                 "DOI": f"10.1000/{cycle}-{index}",
                 "Cited by": cycle + index,
             })
@@ -69,6 +82,18 @@ def test_lda_analysis_has_traceable_outputs():
     assert "stability" in result
     assert result["methodology"]["lsi_used"] is True
     assert all("uncertain" in document for document in result["documents"])
+    bibliometrics = result["bibliometrics"]
+    assert bibliometrics["authors_count"] > 0
+    assert bibliometrics["countries_count"] == 3
+    assert len(bibliometrics["annual_production"]) == 3
+    assert len(bibliometrics["bradford"]["zones"]) >= 1
+    assert bibliometrics["authors"][0]["h_index"] >= 0
+    assert bibliometrics["conceptual"]["keyword_network"]["edges"]
+    assert bibliometrics["conceptual"]["thematic_map"]
+    assert bibliometrics["conceptual"]["three_fields"]["author_keyword"]
+    assert bibliometrics["intellectual"]["available"] is True
+    assert bibliometrics["intellectual"]["cocitation_network"]["edges"]
+    assert bibliometrics["intellectual"]["bibliographic_coupling"]
 
 
 def test_scientific_cleaning_removes_publishers_and_normalizes_concepts():
@@ -97,3 +122,13 @@ def test_lsi_can_be_disabled_explicitly():
     result = analyze(normalized, [2, 3], mode="fast", include_lsi=False)
     assert result["lsi"] is None
     assert result["methodology"]["lsi_used"] is False
+
+
+def test_intellectual_analysis_is_gated_when_references_are_missing():
+    raw = sample_frame().drop(columns=["References"])
+    normalized, _ = normalize_dataset(raw)
+    result = analyze(normalized, [2], mode="fast", include_lsi=False)
+    intellectual = result["bibliometrics"]["intellectual"]
+    assert intellectual["available"] is False
+    assert intellectual["cocitation_network"] == {"nodes": [], "edges": []}
+    assert "References" in intellectual["reason"]

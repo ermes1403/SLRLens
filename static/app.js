@@ -573,7 +573,7 @@ function renderExternalValidation() {
     </div>`;
 }
 
-function renderBibliometrics() {
+function renderBibliometricsLegacy() {
   const metrics = state.result.bibliometrics;
   const assignments = activeAssignments();
   const topicImpact = activeTopics().map(topic => {
@@ -606,6 +606,144 @@ function renderBibliometrics() {
     diagnosticRow("DOI validi", quality.doi_coverage, `${fmt(quality.doi_coverage*100,1)}%`, .85),
     diagnosticRow("Open Access", metrics.open_access_rate, `${fmt(metrics.open_access_rate*100,1)}%`, .5),
   ].join("");
+}
+
+function renderBibliometrics() {
+  const metrics = state.result.bibliometrics;
+  const assignments = activeAssignments();
+  const topicImpact = activeTopics().map(topic => {
+    const documents = state.result.documents.filter(
+      document => assignments[document.id]?.topic === topic.id
+    );
+    const citations = documents.reduce((sum,document) => sum+document.citations,0);
+    return { topic:topic.id, papers:documents.length, citations,
+      mean_citations:citations/Math.max(documents.length,1) };
+  });
+  $("#bibliometric-stats").innerHTML = [
+    ["Citazioni totali", fmt(metrics.total_citations,0), "nel corpus"],
+    ["Media citazioni", fmt(metrics.mean_citations,1), "per paper"],
+    ["Crescita annua", `${fmt(metrics.annual_growth_rate*100,1)}%`, "CAGR produzione"],
+    ["Collaborazione", `${fmt(metrics.collaboration.multi_authored_rate*100,1)}%`, "paper multi-autore"],
+  ].map(([label,value,suffix]) => statCard(label,value,suffix)).join("");
+
+  const intellectual = metrics.intellectual;
+  $("#reference-coverage-badge").innerHTML = intellectual.available
+    ? `<div class="coverage-pill"><strong>${fmt(intellectual.references_coverage*100,1)}%</strong>references disponibili</div>`
+    : `<div class="coverage-pill"><strong>Metadata-aware</strong>nessun risultato inventato</div>`;
+  $("#growth-rate").textContent = `${fmt(metrics.annual_growth_rate*100,1)}% CAGR`;
+  renderAnnualProduction(metrics.annual_production);
+
+  const sources=metrics.top_sources.slice(0,15);
+  const max=Math.max(1,...sources.map(source=>source.papers));
+  $("#source-bars").innerHTML=sources.map(source=>`<div class="author-row"><b title="${esc(source.name)}">${esc(source.name)}</b><span class="author-track"><i style="width:${source.papers/max*100}%"></i></span><span>${source.papers}</span></div>`).join("")||"<p>Fonti non disponibili.</p>";
+  $("#bradford-zones").innerHTML=metrics.bradford.zones.map(zone=>`<div class="bradford-zone"><small>ZONA ${zone.zone}</small><strong>${zone.sources}</strong><span>fonti · ${zone.papers} paper</span></div>`).join("");
+  $("#topic-impact").innerHTML=topicImpact.map((topic,index)=>`<div class="impact-card" style="--topic-color:${colors[index%colors.length]}"><small>TOPIC ${topic.topic} · ${topic.papers} PAPER</small><strong>${fmt(topic.citations,0)}</strong><span>citazioni · media ${fmt(topic.mean_citations,1)}</span></div>`).join("");
+  $("#most-cited-documents").innerHTML=metrics.most_cited_documents.slice(0,12).map((document,index)=>`<div class="rank-row"><i>${index+1}</i><b title="${esc(document.title)}">${esc(document.title)}</b><small>${document.citations} cit.</small></div>`).join("");
+  $("#document-types").innerHTML=metrics.document_types.map(item=>`<span>${esc(item.name)} <b>${item.papers}</b></span>`).join("")||"<p>Tipologie non disponibili.</p>";
+  const quality=state.result.quality;
+  $("#metadata-coverage").innerHTML=[
+    diagnosticRow("Abstract",quality.abstract_coverage,`${fmt(quality.abstract_coverage*100,1)}%`,.9),
+    diagnosticRow("Author keywords",quality.keyword_coverage,`${fmt(quality.keyword_coverage*100,1)}%`,.75),
+    diagnosticRow("DOI validi",quality.doi_coverage,`${fmt(quality.doi_coverage*100,1)}%`,.85),
+    diagnosticRow("Open Access",metrics.open_access_rate,`${fmt(metrics.open_access_rate*100,1)}%`,.5),
+  ].join("");
+
+  $("#lotka-beta").textContent=`Lotka β=${fmt(metrics.lotka.estimated_beta,2)}`;
+  $("#author-impact").innerHTML=`<div class="rank-row author-impact-row"><i>#</i><b>Autore</b><span>Paper</span><span>h</span><span>g</span><span>m</span></div>`+
+    metrics.authors.slice(0,18).map((author,index)=>`<div class="rank-row author-impact-row"><i>${index+1}</i><b title="${esc(author.name)}">${esc(author.name)}</b><span>${author.papers}</span><span>${author.h_index}</span><span>${author.g_index}</span><span>${fmt(author.m_index,2)}</span></div>`).join("");
+  $("#collaboration-stats").innerHTML=[
+    ["Autori",metrics.authors_count,"distinti"],["Paesi",metrics.countries_count,"identificati"],
+    ["Autori/documento",fmt(metrics.collaboration.authors_per_document,1),"media"],
+    ["Collaboration index",fmt(metrics.collaboration.collaboration_index,1),"autori / paper collaborativo"],
+  ].map(([label,value,suffix])=>statCard(label,value,suffix)).join("");
+  renderNetwork("#coauthor-network",metrics.coauthor_network,"author");
+  renderCountries(metrics.countries);
+  renderNetwork("#country-network",metrics.country_network,"country",true);
+  const affiliations=metrics.top_affiliations.slice(0,15);
+  const affiliationMax=Math.max(1,...affiliations.map(item=>item.papers));
+  $("#affiliation-bars").innerHTML=affiliations.map(item=>`<div class="author-row"><b title="${esc(item.name)}">${esc(item.name)}</b><span class="author-track"><i style="width:${item.papers/affiliationMax*100}%"></i></span><span>${item.papers}</span></div>`).join("")||"<p>Affiliazioni non disponibili nell'export.</p>";
+
+  renderNetwork("#keyword-network",metrics.conceptual.keyword_network,"keyword");
+  renderThematicMap(metrics.conceptual.thematic_map);
+  renderTrendTopics(metrics.conceptual.trend_topics);
+  renderThreeFields(metrics.conceptual.three_fields);
+  renderThematicEvolution(metrics.conceptual.thematic_evolution);
+
+  const gate=$("#intellectual-gate");
+  gate.classList.toggle("ready",intellectual.available);
+  gate.innerHTML=intellectual.available
+    ? `<strong>Struttura intellettuale calcolata su dati reali</strong><p>Copertura cited references: ${fmt(intellectual.references_coverage*100,1)}%. Le reti usano esclusivamente riferimenti presenti nell'export.</p>`
+    : `<strong>Analisi correttamente sospesa</strong><p>${esc(intellectual.reason)} Esporta da Scopus anche “References” e ricarica il corpus: il modulo si attiverà automaticamente.</p>`;
+  $("#intellectual-content").classList.toggle("hidden",!intellectual.available);
+  if(intellectual.available){
+    renderNetwork("#cocitation-network",intellectual.cocitation_network,"reference");
+    $("#coupling-list").innerHTML=intellectual.bibliographic_coupling.slice(0,40).map(edge=>`<div class="connection"><span title="${esc(edge.source)}">${esc(edge.source)}</span><i data-count="${edge.shared_references}"></i><span title="${esc(edge.target)}">${esc(edge.target)}</span></div>`).join("");
+  }
+  $$("[data-biblio-jump]").forEach(button=>button.onclick=()=>$(`#biblio-${button.dataset.biblioJump}`).scrollIntoView({behavior:"smooth",block:"start"}));
+}
+
+function renderAnnualProduction(series){
+  if(!series.length){$("#annual-production").innerHTML="<p>Anni non disponibili.</p>";return;}
+  const width=620,height=250,pad=34,max=Math.max(1,...series.map(item=>item.papers));
+  const step=(width-pad*2)/Math.max(series.length,1);
+  const bars=series.map((item,index)=>{const h=item.papers/max*(height-pad*2),x=pad+index*step+step*.18,y=height-pad-h;
+    return `<g><rect x="${x}" y="${y}" width="${Math.max(5,step*.64)}" height="${h}" rx="4" fill="#2866ff"/><text x="${x+step*.32}" y="${height-12}" text-anchor="middle" class="chart-text">${item.year}</text><text x="${x+step*.32}" y="${Math.max(12,y-6)}" text-anchor="middle" class="chart-text">${item.papers}</text></g>`;}).join("");
+  $("#annual-production").innerHTML=`<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Produzione scientifica annuale"><line x1="${pad}" y1="${height-pad}" x2="${width-pad}" y2="${height-pad}" class="chart-axis"/>${bars}</svg>`;
+}
+
+function renderNetwork(selector,network,kind,compact=false){
+  const container=$(selector);
+  if(!network?.nodes?.length||!network?.edges?.length){container.innerHTML="<p class='empty-state'>Rete non disponibile con i metadati correnti.</p>";return;}
+  const width=700,height=compact?135:290,cx=width/2,cy=height/2,nodes=network.nodes.slice(0,compact?18:35);
+  const allowed=new Set(nodes.map(node=>node.id)),maxDegree=Math.max(1,...nodes.map(node=>node.degree)),positions={};
+  nodes.forEach((node,index)=>{const angle=index/nodes.length*Math.PI*2-Math.PI/2,ring=index<Math.min(7,nodes.length)?.48:.85;positions[node.id]=[cx+Math.cos(angle)*width*.38*ring,cy+Math.sin(angle)*height*.40*ring];});
+  const edges=network.edges.filter(edge=>allowed.has(edge.source)&&allowed.has(edge.target)).slice(0,90).map(edge=>{const [x1,y1]=positions[edge.source],[x2,y2]=positions[edge.target];return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" class="network-edge" stroke-width="${Math.min(5,.5+edge.weight*.55)}"><title>${esc(edge.source)} ↔ ${esc(edge.target)}: ${edge.weight}</title></line>`;}).join("");
+  const circles=nodes.map((node,index)=>{const [x,y]=positions[node.id],r=3+Math.sqrt(node.degree/maxDegree)*8,color=colors[index%colors.length],label=kind==="reference"&&node.label.length>30?node.label.slice(0,28)+"…":node.label;return `<g><circle cx="${x}" cy="${y}" r="${r}" fill="${color}" class="network-node"><title>${esc(node.label)} · grado ${node.degree}</title></circle>${compact?"":`<text x="${x+r+3}" y="${y+3}" class="network-label">${esc(label)}</text>`}</g>`;}).join("");
+  container.innerHTML=`<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Rete ${kind}">${edges}${circles}</svg>`;
+}
+
+function renderCountries(countries){
+  const max=Math.max(1,...countries.map(country=>country.papers));
+  $("#country-collaboration").innerHTML=countries.slice(0,14).map(country=>`<div class="country-row"><b>${esc(country.name)}</b><span class="country-bar"><i style="width:${country.scp/max*100}%"></i><i style="width:${country.mcp/max*100}%"></i></span><small>${country.papers} · MCP ${fmt(country.mcp_rate*100,0)}%</small></div>`).join("")||"<p>Paesi non riconosciuti nelle affiliazioni.</p>";
+}
+
+function renderThematicMap(themes){
+  if(!themes.length){$("#thematic-map").innerHTML="<p>Servono keyword sufficienti per costruire la mappa.</p>";return;}
+  const width=620,height=285,pad=42,maxX=Math.max(1,...themes.map(theme=>Math.abs(theme.centrality_relative))),maxY=Math.max(1,...themes.map(theme=>Math.abs(theme.density_relative))),maxDocuments=Math.max(1,...themes.map(theme=>theme.documents));
+  const bubbles=themes.slice(0,12).map((theme,index)=>{const x=pad+(theme.centrality_relative/maxX+1)/2*(width-pad*2),y=height-pad-(theme.density_relative/maxY+1)/2*(height-pad*2),r=10+Math.sqrt(theme.documents/maxDocuments)*22;return `<g><circle cx="${x}" cy="${y}" r="${r}" fill="${colors[index%colors.length]}" class="theme-bubble"><title>${esc(theme.label)} · centralità ${fmt(theme.centrality,1)} · densità ${fmt(theme.density,1)}</title></circle><text x="${x}" y="${y+3}" text-anchor="middle" class="theme-label">${esc(theme.label.slice(0,22))}</text></g>`;}).join("");
+  $("#thematic-map").innerHTML=`<svg viewBox="0 0 ${width} ${height}"><text x="14" y="17" class="quadrant-label">NICCHIA</text><text x="${width-88}" y="17" class="quadrant-label">MOTORI</text><text x="14" y="${height-10}" class="quadrant-label">DECLINO/EMERGENTI</text><text x="${width-93}" y="${height-10}" class="quadrant-label">BASIC THEMES</text>${bubbles}</svg>`;
+}
+
+function renderTrendTopics(topics){
+  $("#trend-topics").innerHTML=topics.slice(0,16).map(topic=>{const max=Math.max(1,...topic.series.map(point=>point.papers));return `<div class="trend-card"><b title="${esc(topic.keyword)}">${esc(topic.keyword)}</b><small>${topic.total} occorrenze</small><span class="trend-spark">${topic.series.map(point=>`<i style="height:${Math.max(4,point.papers/max*100)}%" title="${point.year}: ${point.papers}"></i>`).join("")}</span></div>`;}).join("")||"<p>Keyword temporali non disponibili.</p>";
+}
+
+function renderThreeFields(flows){
+  const first=flows.author_keyword.slice(0,24),second=flows.keyword_source.slice(0,24);
+  if(!first.length||!second.length){$("#three-field-plot").innerHTML="<p>Servono autori, keyword e fonti per il Three-Field Plot.</p>";return;}
+  const authors=[...new Set(first.map(edge=>edge.source))].slice(0,8);
+  const keywords=[...new Set([...first.map(edge=>edge.target),...second.map(edge=>edge.source)])].slice(0,10);
+  const sources=[...new Set(second.map(edge=>edge.target))].slice(0,8);
+  const columns=[authors,keywords,sources],width=700,height=285,positions={};
+  columns.forEach((items,column)=>items.forEach((item,index)=>positions[`${column}:${item}`]=[45+column*305,28+index*(230/Math.max(items.length-1,1))]));
+  const links=[
+    ...first.filter(edge=>authors.includes(edge.source)&&keywords.includes(edge.target)).map(edge=>({...edge,a:`0:${edge.source}`,b:`1:${edge.target}`})),
+    ...second.filter(edge=>keywords.includes(edge.source)&&sources.includes(edge.target)).map(edge=>({...edge,a:`1:${edge.source}`,b:`2:${edge.target}`})),
+  ].map(edge=>{const [x1,y1]=positions[edge.a],[x2,y2]=positions[edge.b];return `<path d="M${x1+13},${y1} C${x1+145},${y1} ${x2-145},${y2} ${x2-13},${y2}" class="flow-line" stroke-width="${Math.min(8,1+edge.weight)}"><title>${esc(edge.source)} → ${esc(edge.target)}: ${edge.weight}</title></path>`;}).join("");
+  const nodes=columns.flatMap((items,column)=>items.map((item,index)=>{const [x,y]=positions[`${column}:${item}`],color=colors[(column*2+index)%colors.length],anchor=column===2?"end":"start",labelX=column===2?x-17:x+17;return `<g><rect x="${x-11}" y="${y-6}" width="22" height="12" fill="${color}" class="flow-node"/><text x="${labelX}" y="${y+3}" text-anchor="${anchor}" class="flow-label">${esc(item.slice(0,24))}</text></g>`;})).join("");
+  $("#three-field-plot").innerHTML=`<svg viewBox="0 0 ${width} ${height}">${links}${nodes}</svg>`;
+}
+
+function renderThematicEvolution(evolution){
+  if(!evolution?.slices?.length||evolution.slices.length<2){$("#thematic-evolution").innerHTML="<p>Servono almeno due anni per l'evoluzione tematica.</p>";return;}
+  const left=evolution.slices[0].themes.slice(0,8),right=evolution.slices[1].themes.slice(0,8),width=700,height=285,positions={};
+  left.forEach((theme,index)=>positions[theme.id]=[75,35+index*30]);
+  right.forEach((theme,index)=>positions[theme.id]=[625,35+index*30]);
+  const allowed=new Set([...left,...right].map(theme=>theme.id));
+  const flows=evolution.flows.filter(flow=>allowed.has(flow.source)&&allowed.has(flow.target)).slice(0,25).map(flow=>{const [x1,y1]=positions[flow.source],[x2,y2]=positions[flow.target];return `<path d="M${x1+12},${y1} C280,${y1} 420,${y2} ${x2-12},${y2}" class="flow-line" stroke-width="${Math.max(1,flow.jaccard*10)}"><title>Jaccard ${fmt(flow.jaccard,2)} · ${esc(flow.shared_keywords.join(", "))}</title></path>`;}).join("");
+  const nodes=[...left,...right].map((theme,index)=>{const [x,y]=positions[theme.id];return `<g><circle cx="${x}" cy="${y}" r="${7+Math.min(10,Math.sqrt(theme.documents))}" fill="${colors[index%colors.length]}"/><text x="${x+(x<350?18:-18)}" y="${y+3}" text-anchor="${x<350?"start":"end"}" class="flow-label">${esc(theme.label.slice(0,30))}</text></g>`;}).join("");
+  const a=evolution.slices[0],b=evolution.slices[1];
+  $("#thematic-evolution").innerHTML=`<svg viewBox="0 0 ${width} ${height}"><text x="20" y="14" class="quadrant-label">${a.start_year}–${a.end_year}</text><text x="${width-80}" y="14" class="quadrant-label">${b.start_year}–${b.end_year}</text>${flows}${nodes}</svg>`;
 }
 
 function renderCandidateTable() {
